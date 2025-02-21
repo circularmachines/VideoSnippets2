@@ -1,6 +1,6 @@
 # VideoSnippets2
 
-A web application for processing videos with automatic transcription and frame extraction.
+A web application for processing videos with automatic transcription, frame extraction, and smart snippet generation.
 
 ## Features
 
@@ -8,7 +8,9 @@ A web application for processing videos with automatic transcription and frame e
 - Extract audio using FFmpeg
 - Automatic transcription with timestamps using OpenAI Whisper API
 - Extract frames from key moments in the video
-- View transcriptions with associated frames
+- AI-powered content analysis with GPT-4o
+- Automatic snippet generation based on objects and actions
+- View transcriptions with associated frames and snippets
 - Modern web interface with real-time progress tracking
 
 ## Project Structure
@@ -16,8 +18,9 @@ A web application for processing videos with automatic transcription and frame e
 ```
 VideoSnippets2/
 ├── processing/           # Processing modules
-│   ├── video.py         # Video processing (audio extraction, frames)
-│   └── transcribe.py    # Audio transcription with Whisper
+│   ├── video.py         # Video processing (audio, frames)
+│   ├── transcribe.py    # Audio transcription with Whisper
+│   └── snippets.py      # Content analysis and snippet creation
 ├── static/              # Frontend assets
 │   ├── js/             # JavaScript files
 │   ├── css/            # CSS files
@@ -25,6 +28,11 @@ VideoSnippets2/
 │   └── verify.html     # Transcription viewer
 ├── uploads/            # Temporary upload storage
 ├── library/           # Processed video library
+│   └── <video_name>/  # Per-video storage
+│       ├── audio.mp3  # Extracted audio
+│       ├── frames/    # Extracted frames
+│       ├── snippets/  # Generated snippets
+│       └── transcription.json  # Transcription and analysis
 ├── app.py             # Flask application
 └── requirements.txt   # Python dependencies
 ```
@@ -78,6 +86,7 @@ The app will be available at http://localhost:5000
    - Processed to extract audio
    - Transcribed with Whisper
    - Analyzed to extract key frames
+   - Analyzed to generate snippets
 4. View the results at /verify when complete
 
 ## Development

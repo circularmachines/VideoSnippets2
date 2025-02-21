@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoSnippets - Library</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>VideoSnippets</h1>
+            <nav>
+                <a href="/">Upload</a>
+                <a href="/verify">Verify</a>
+                <a href="/library" class="active">Library</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="library-section">
+                <h2>Video Library</h2>
+                <div class="search-container">
+                    <input type="text" id="searchInput" placeholder="Search snippets...">
+                </div>
+                <div class="library-grid" id="libraryGrid">
+                    <!-- Snippets will be loaded here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Snippet Details Modal -->
+        <div class="modal" id="snippetModal">
+            <div class="modal-content">
+                <span class="close-button" onclick="closeModal()">&times;</span>
+                <div class="modal-grid">
+                    <div class="video-container">
+                        <video id="snippetVideo" controls></video>
+                    </div>
+                    <div class="snippet-info">
+                        <h3 id="snippetTitle"></h3>
+                        <p id="snippetDescription"></p>
+                        <div class="segments-list" id="segmentsList">
+                            <!-- Segments will be listed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/library.js"></script>
+</body>
+</html>

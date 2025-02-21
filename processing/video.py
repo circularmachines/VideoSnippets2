@@ -12,10 +12,11 @@ import cv2
 import json
 import subprocess
 from .transcribe import transcribe_audio
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 
-def process_video(video_path: str, output_dir: str, status_dict=None) -> dict:
+def process_video(video_path: str, output_dir: str, status_dict=None, skip_frames=False) -> dict:
     """
     Process a video file to extract audio and frames.
     
@@ -23,6 +24,7 @@ def process_video(video_path: str, output_dir: str, status_dict=None) -> dict:
         video_path: Path to the video file
         output_dir: Directory to store processing outputs
         status_dict: Optional dictionary to update processing status
+        skip_frames: Optional flag to skip frame extraction
         
     Returns:
         dict: Processing results including paths to extracted audio and frames
@@ -59,20 +61,32 @@ def process_video(video_path: str, output_dir: str, status_dict=None) -> dict:
         result['transcription_path'] = transcription_path
         
         # Extract frames
+        if not skip_frames:
+            if status_dict:
+                status_dict[video_id] = {
+                    'status': 'extracting_frames',
+                    'message': 'Extracting frames from video...'
+                }
+            frames_dir = output_path / 'frames'
+            frames_dir.mkdir(exist_ok=True)
+            extract_frames(video_path, transcription_path, frames_dir)
+            result['frames_dir'] = str(frames_dir)
+        
         if status_dict:
             status_dict[video_id] = {
-                'status': 'extracting_frames',
-                'message': 'Extracting frames from video...'
+                'status': 'complete',
+                'message': 'Video processing complete!'
             }
-        frames_dir = output_path / 'frames'
-        frames_dir.mkdir(exist_ok=True)
-        extract_frames(video_path, transcription_path, frames_dir)
-        result['frames_dir'] = str(frames_dir)
         
         return result
         
     except Exception as e:
         logger.exception("Error during video processing")
+        if status_dict:
+            status_dict[video_id] = {
+                'status': 'error',
+                'message': f'Processing failed: {str(e)}'
+            }
         raise RuntimeError(f"Failed to process video: {str(e)}")
 
 def extract_audio(video_path: str, output_dir: Path) -> Path:
@@ -179,3 +193,112 @@ def extract_frames(video_path: str, json_path: str, output_dir: Path):
     except Exception as e:
         logger.exception("Error during frame extraction")
         raise RuntimeError(f"Failed to extract frames: {str(e)}")
+
+def cut_video_segments(video_path: str, snippets_data: Dict, output_dir: str = None) -> None:
+    """Cut video into segments based on snippet data.
+    
+    Args:
+        video_path: Path to the source video file
+        snippets_data: Dictionary containing snippet information with timestamps
+        output_dir: Directory to store video segments (default: same as video)
+    """
+    # Create videos directory
+    if output_dir is None:
+        output_dir = os.path.dirname(video_path)
+    videos_dir = os.path.join(output_dir, 'videos')
+    os.makedirs(videos_dir, exist_ok=True)
+    
+    # Process each snippet
+    for snippet in snippets_data.get('snippets', []):
+        if not snippet['segments']:
+            print(f"Skipping snippet '{snippet['title']}' - no segments")
+            continue
+        
+        # Get start time from first segment and end time from last segment
+        start_time = snippet['segments'][0]['start']
+        end_time = snippet['segments'][-1]['end']
+        
+        # Create a safe filename from the snippet title
+        safe_name = "".join(c if c.isalnum() else "_" for c in snippet['title'].lower())
+        output_file = os.path.join(videos_dir, f"{safe_name}.mp4")
+        
+        # Cut the video segment
+        cmd = [
+            'ffmpeg', '-y',  # Overwrite output files
+            '-i', video_path,
+            '-ss', str(start_time),
+            '-to', str(end_time),
+            '-c', 'copy',  # Use fast copy mode
+            output_file
+        ]
+        
+        print(f"Cutting video for '{snippet['title']}'...")
+        try:
+            subprocess.run(cmd, check=True, capture_output=True)
+            # Add video path to the snippet
+            snippet['video_path'] = os.path.relpath(output_file, output_dir)
+        except subprocess.CalledProcessError as e:
+            print(f"Error cutting video for '{snippet['title']}': {e.stderr.decode()}")
+            continue
+    
+    # Save updated snippets
+    snippets_json = os.path.join(output_dir, 'snippets', 'snippets.json')
+    os.makedirs(os.path.dirname(snippets_json), exist_ok=True)
+    with open(snippets_json, 'w', encoding='utf-8') as f:
+        json.dump(snippets_data, f, indent=2, ensure_ascii=False)
+    
+    print(f"\nProcessing complete. Video segments saved to: {videos_dir}")
+
+def cut_library_snippets(library_dir: str) -> None:
+    """Cut video into snippets for a library directory.
+    
+    Args:
+        library_dir: Path to library directory containing video and snippets
+    """
+    video_name = os.path.basename(library_dir)
+    
+    # Try both .mp4 and .mov extensions
+    video_path = None
+    for ext in ['.mp4', '.MOV', '.mov']:
+        test_path = os.path.join('uploads', f"{video_name}{ext}")
+        if os.path.exists(test_path):
+            video_path = test_path
+            break
+    
+    if not video_path:
+        raise FileNotFoundError(f"Video file not found in uploads directory: {video_name}.*")
+    
+    snippets_path = os.path.join(library_dir, 'snippets', 'snippets.json')
+    
+    # Load snippets
+    with open(snippets_path, 'r', encoding='utf-8') as f:
+        snippets = json.load(f)
+    
+    # Cut video
+    cut_video_segments(video_path, snippets, library_dir)
+
+if __name__ == '__main__':
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='Video processing utilities')
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    
+    # Process video command
+    process_parser = subparsers.add_parser('process', help='Process a video file')
+    process_parser.add_argument('video_path', help='Path to video file')
+    process_parser.add_argument('--output-dir', help='Output directory (default: same as video)')
+    process_parser.add_argument('--skip-frames', action='store_true', help='Skip frame extraction')
+    
+    # Cut snippets command
+    cut_parser = subparsers.add_parser('cut', help='Cut video into snippets')
+    cut_parser.add_argument('library_dir', help='Path to library directory')
+    
+    args = parser.parse_args()
+    
+    if args.command == 'process':
+        output_dir = args.output_dir or os.path.dirname(args.video_path)
+        process_video(args.video_path, output_dir, skip_frames=args.skip_frames)
+    elif args.command == 'cut':
+        cut_library_snippets(args.library_dir)
+    else:
+        parser.print_help()

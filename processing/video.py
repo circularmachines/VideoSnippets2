@@ -228,7 +228,12 @@ def cut_video_segments(video_path: str, snippets_data: Dict, output_dir: str = N
             '-i', video_path,
             '-ss', str(start_time),
             '-to', str(end_time),
-            '-c', 'copy',  # Use fast copy mode
+            '-c:v', 'libx264',  # Use H.264 codec
+            '-preset', 'fast',  # Fast encoding
+            '-crf', '23',      # Good quality
+            '-c:a', 'aac',     # AAC audio codec
+            '-b:a', '128k',    # Audio bitrate
+            '-movflags', '+faststart',  # Enable fast start for web playback
             output_file
         ]
         

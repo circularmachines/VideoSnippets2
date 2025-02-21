@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoSnippets</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>VideoSnippets</h1>
+            <nav>
+                <a href="/" class="active">Upload</a>
+                <a href="/verify">Verify</a>
+                <a href="/library">Library</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="upload-section">
+                <h2>Upload Video</h2>
+                <div class="upload-container" id="dropZone">
+                    <input type="file" id="fileInput" accept="video/*" style="display: none;">
+                    <div class="upload-prompt">
+                        <svg width="50" height="50" viewBox="0 0 24 24">
+                            <path fill="currentColor" d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                        </svg>
+                        <p>Drag & drop video here or click to browse</p>
+                    </div>
+                    <div class="upload-progress" style="display: none;">
+                        <div class="progress-bar">
+                            <div class="progress" style="width: 0%"></div>
+                        </div>
+                        <p class="status">Uploading...</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="processing-status" style="display: none;">
+                <h3>Processing Status</h3>
+                <div class="status-steps">
+                    <div class="step" data-step="upload">
+                        <span class="step-number">1</span>
+                        <span class="step-name">Upload</span>
+                    </div>
+                    <div class="step" data-step="process">
+                        <span class="step-number">2</span>
+                        <span class="step-name">Process</span>
+                    </div>
+                    <div class="step" data-step="analyze">
+                        <span class="step-number">3</span>
+                        <span class="step-name">Analyze</span>
+                    </div>
+                    <div class="step" data-step="complete">
+                        <span class="step-number">4</span>
+                        <span class="step-name">Complete</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/js/upload.js"></script>
+</body>
+</html>

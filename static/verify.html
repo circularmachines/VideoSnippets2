@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Extraction - VideoSnippets</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .audio-info {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .metadata {
+            margin: 20px 0;
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        .transcription {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .segment {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .segment-time {
+            color: #666;
+            font-size: 12px;
+        }
+        .actions {
+            margin-top: 20px;
+        }
+        .actions button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .actions button:hover {
+            background: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Audio Extraction Complete</h1>
+        <div id="verificationContent">
+            <div class="loading">Loading audio information...</div>
+        </div>
+        <div id="transcriptionContent">
+            <div class="loading">Loading transcription...</div>
+        </div>
+        <div class="actions">
+            <button onclick="window.location.href='/'">Process Another Video</button>
+        </div>
+    </div>
+    <script src="/static/js/verify.js"></script>
+</body>
+</html>

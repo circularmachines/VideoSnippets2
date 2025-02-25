@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Audio Extraction - Snuttification</title>
     <link rel="stylesheet" href="/static/css/styles.css">
     <style>
@@ -51,16 +53,27 @@
 </head>
 <body>
     <div class="container">
-        <h1>Audio Extraction Complete</h1>
-        <div id="verificationContent">
-            <div class="loading">Loading audio information...</div>
-        </div>
-        <div id="transcriptionContent">
-            <div class="loading">Loading transcription...</div>
-        </div>
-        <div class="actions">
-            <button onclick="window.location.href='/'">Process Another Video</button>
-        </div>
+        <header>
+            <h1>Revive of Value <i>powered by</i> snuttification</h1>
+            <nav>
+                <a href="/">Upload</a>
+                <a href="/verify" class="active">Verify</a>
+                <a href="/library">Library</a>
+            </nav>
+        </header>
+
+        <main>
+            <h1>Audio Extraction Complete</h1>
+            <div id="verificationContent">
+                <div class="loading">Loading audio information...</div>
+            </div>
+            <div id="transcriptionContent">
+                <div class="loading">Loading transcription...</div>
+            </div>
+            <div class="actions">
+                <button onclick="window.location.href='/'">Process Another Video</button>
+            </div>
+        </main>
     </div>
     <script src="/static/js/verify.js"></script>
 </body>

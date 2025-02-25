@@ -36,6 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Handle click on dropzone
+    dropZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+
     async function pollStatus(videoName) {
         try {
             console.log('Polling status for:', videoName);
@@ -49,29 +54,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             statusText.textContent = status.message;
             
-            switch (status.status) {
-                case 'uploading':
-                    progressBar.style.width = '25%';
-                    return false;
-                    
-                case 'extracting':
-                    progressBar.style.width = '50%';
-                    return false;
-                    
-                case 'transcribing':
-                    progressBar.style.width = '75%';
-                    return false;
-                    
-                case 'complete':
-                    progressBar.style.width = '100%';
-                    return true;
-                    
-                case 'error':
-                    throw new Error(status.message);
-                    
-                default:
-                    return false;
+            // Use the progress percentage from the backend
+            if (status.progress !== undefined) {
+                progressBar.style.width = `${status.progress}%`;
             }
+            
+            return status.status === 'complete' || status.status === 'error';
+            
         } catch (error) {
             console.error('Status polling error:', error);
             statusText.textContent = `Error: ${error.message}`;
@@ -87,6 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         uploadPrompt.style.display = 'none';
         uploadProgress.style.display = 'block';
         progressBar.style.width = '0%';
+        progressBar.style.backgroundColor = '#4CAF50';  // Reset to green
         statusText.textContent = 'Starting upload...';
         
         try {
@@ -95,7 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Upload file
             statusText.textContent = 'Uploading video...';
-            progressBar.style.width = '25%';
+            progressBar.style.width = '0%';
             
             const response = await fetch('/api/upload', {
                 method: 'POST',

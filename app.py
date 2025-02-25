@@ -11,7 +11,10 @@ import logging
 from threading import Thread
 from werkzeug.utils import secure_filename
 from processing.video import process_video, cut_library_snippets
-from processing.snippets import load_and_simplify_segments, get_structured_output, create_snippets
+from processing.snippets import load_and_simplify_segments, get_structured_output, process_snippets
+from processing.progress import ProgressTracker
+import time
+import re
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,58 +47,75 @@ def library():
     logger.debug('Serving library.html')
     return send_from_directory('static', 'library.html')
 
-def process_video_async(video_path, video_name):
+def process_video_async(video_path: str, video_name: str):
     """Process video in a separate thread."""
     try:
         # Create output directory
         output_dir = Path('library') / video_name
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Check if snippets already exist
+        # Create subdirectories
         snippets_dir = output_dir / 'snippets'
-        snippets_file = snippets_dir / 'snippets.json'
+        snippets_dir.mkdir(parents=True, exist_ok=True)
         videos_dir = output_dir / 'videos'
+        videos_dir.mkdir(parents=True, exist_ok=True)
         
-        if snippets_file.exists() and videos_dir.exists() and any(videos_dir.iterdir()):
-            logger.info(f"Using existing snippets and videos for: {video_name}")
+        progress = ProgressTracker(video_name, processing_status)
+        
+        # Check if snippets already exist
+        snippets_file = snippets_dir / 'snippets.json'
+        
+        # Check for existing files
+        audio_exists = (output_dir / "audio.mp3").exists()
+        transcription_exists = (output_dir / "transcription.json").exists()
+        frames_exist = (output_dir / "frames").exists() and any((output_dir / "frames").iterdir())
+        snippets_exist = snippets_file.exists()
+        videos_exist = videos_dir.exists() and any(videos_dir.iterdir())
+        
+        if audio_exists and transcription_exists and frames_exist and snippets_exist and videos_exist:
+            # Simulate the processing steps with existing files
+            progress.using_existing('audio')
+            progress.using_existing('transcription')
+            progress.using_existing('frames')
+            
             with open(snippets_file) as f:
                 snippets = json.load(f).get('snippets', [])
-            processing_status[video_name] = {
-                'status': 'complete',
-                'message': f'Using {len(snippets)} existing snippets'
-            }
+            
+            progress.using_existing('snippets')
+            progress.using_existing('video segments')
+            progress.complete(len(snippets))
+            logger.info(f"Using existing snippets and videos for: {video_name}")
             return
             
         # Process video
         logger.info(f'Processing video: {video_name}')
-        result = process_video(str(video_path), str(output_dir), processing_status)
+        result = process_video(str(video_path), str(output_dir), status_dict=processing_status)
         
         # Create snippets
+        progress.creating_snippets()
         logger.info('Creating snippets')
-        snippets = create_snippets(
+        snippets = process_snippets(
             result['transcription_path'],
             skip_analysis='analysis' in result,
             skip_existing=True
         )
         
         # Cut video into segments
+        progress.cutting_video()
         logger.info('Cutting video segments')
-        cut_library_snippets(str(output_dir))
-        
-        # Update status
-        processing_status[video_name] = {
-            'status': 'complete',
-            'message': f'Processing complete. Created {len(snippets)} snippets!'
-        }
-        
-        logger.info('Video processing complete')
+        try:
+            cut_library_snippets(str(output_dir))
+            # Update status only after cutting is complete
+            progress.complete(len(snippets))
+            logger.info('Video processing complete')
+        except Exception as e:
+            logger.exception('Error cutting video segments')
+            progress.error(str(e))
+            raise
         
     except Exception as e:
         logger.exception('Error processing video')
-        processing_status[video_name] = {
-            'status': 'error',
-            'message': str(e)
-        }
+        progress.error(str(e))
         raise
 
 # API Endpoints
@@ -125,15 +145,13 @@ def upload_video():
         # Initialize status
         video_name = video_path.stem
         logger.debug(f'Video name for status tracking: {video_name}')
-        processing_status[video_name] = {
-            'status': 'uploading',
-            'message': 'Video uploaded, starting processing...'
-        }
+        progress = ProgressTracker(video_name, processing_status)
+        progress.update('uploading', 'Video uploaded, starting processing...', sleep=False)
         
         # Start processing in a separate thread
         thread = Thread(
             target=process_video_async,
-            args=(video_path, video_name)
+            args=(str(video_path), video_name)
         )
         thread.start()
         
@@ -145,15 +163,10 @@ def upload_video():
         
     except Exception as e:
         logger.exception('Error during upload')
-        if video_name in processing_status:
-            processing_status[video_name] = {
-                'status': 'error',
-                'message': str(e)
-            }
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+        if 'video_name' in locals():
+            progress = ProgressTracker(video_name, processing_status)
+            progress.error(str(e))
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/status/<video_name>')
 def get_status(video_name):
@@ -175,7 +188,7 @@ def get_transcription(video_name):
         if not transcription_path.exists():
             return jsonify({'error': 'Transcription not found'}), 404
             
-        with open(transcription_path, 'r', encoding='utf-8') as f:
+        with open(transcription_path) as f:
             data = json.load(f)
             
         return jsonify(data)
@@ -193,7 +206,7 @@ def get_snippets(video_name):
         if not snippets_path.exists():
             return jsonify({'error': 'Snippets not found'}), 404
             
-        with open(snippets_path, 'r', encoding='utf-8') as f:
+        with open(snippets_path) as f:
             data = json.load(f)
             
         return jsonify(data)
@@ -413,7 +426,7 @@ def create_video_snippets():
     skip_existing = request.json.get('skip_existing', False)
     
     try:
-        snippets = create_snippets(
+        snippets = process_snippets(
             transcription_path,
             skip_analysis=skip_analysis,
             skip_existing=skip_existing

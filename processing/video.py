@@ -15,26 +15,15 @@ from .transcribe import transcribe_audio
 from typing import Dict
 import sys
 import config
+from .progress import ProgressTracker
 
 logger = logging.getLogger(__name__)
 
 def process_video(video_path: str, output_dir: str, status_dict=None, skip_audio=False, skip_transcription=False, skip_frames=False) -> dict:
-    """
-    Process a video file to extract audio and frames.
-    Steps will be skipped if output files already exist or if explicitly skipped.
-    
-    Args:
-        video_path: Path to the video file
-        output_dir: Directory to store processing outputs
-        status_dict: Optional dictionary to update processing status
-        skip_audio: Skip audio extraction even if audio file doesn't exist
-        skip_transcription: Skip transcription even if transcription file doesn't exist
-        skip_frames: Skip frame extraction even if frames don't exist
-        
-    Returns:
-        dict: Processing results including paths to extracted audio and frames
-    """
+    """Process a video file to extract audio and frames."""
     video_id = Path(video_path).stem
+    progress = ProgressTracker(video_id, status_dict)
+    
     result = {
         'video_id': video_id,
         'audio_path': None,
@@ -51,16 +40,14 @@ def process_video(video_path: str, output_dir: str, status_dict=None, skip_audio
         audio_path = output_path / "audio.mp3"
         if not skip_audio:
             if not audio_path.exists():
-                if status_dict:
-                    status_dict[video_id] = {
-                        'status': 'extracting',
-                        'message': 'Extracting audio from video...'
-                    }
+                progress.extracting()
                 audio_path = extract_audio(video_path, output_path)
                 logger.info(f"Extracted audio from video: {video_id}")
             else:
+                progress.using_existing('audio')
                 logger.info(f"Using existing audio for video: {video_id}")
         else:
+            progress.skipping('audio extraction')
             logger.info(f"Skipping audio extraction for video: {video_id}")
                 
         result['audio_path'] = str(audio_path)
@@ -69,16 +56,14 @@ def process_video(video_path: str, output_dir: str, status_dict=None, skip_audio
         transcription_path = output_path / "transcription.json"
         if not skip_transcription:
             if not transcription_path.exists():
-                if status_dict:
-                    status_dict[video_id] = {
-                        'status': 'transcribing',
-                        'message': 'Transcribing audio...'
-                    }
+                progress.transcribing()
                 transcription_path = transcribe_audio(str(audio_path), str(output_path))
                 logger.info(f"Created transcription for video: {video_id}")
             else:
+                progress.using_existing('transcription')
                 logger.info(f"Using existing transcription for video: {video_id}")
         else:
+            progress.skipping('transcription')
             logger.info(f"Skipping transcription for video: {video_id}")
                 
         result['transcription_path'] = str(transcription_path)
@@ -87,35 +72,23 @@ def process_video(video_path: str, output_dir: str, status_dict=None, skip_audio
         frames_dir = output_path / "frames"
         if not skip_frames:
             if not frames_dir.exists() or not any(frames_dir.iterdir()):
-                if status_dict:
-                    status_dict[video_id] = {
-                        'status': 'extracting_frames',
-                        'message': 'Extracting video frames...'
-                    }
+                progress.extracting_frames()
                 frames_dir = extract_frames(video_path, transcription_path, frames_dir)
                 logger.info(f"Extracted frames for video: {video_id}")
             else:
+                progress.using_existing('frames')
                 logger.info(f"Using existing frames for video: {video_id}")
         else:
+            progress.skipping('frame extraction')
             logger.info(f"Skipping frame extraction for video: {video_id}")
                 
         result['frames_dir'] = str(frames_dir)
         
-        if status_dict:
-            status_dict[video_id] = {
-                'status': 'done',
-                'message': 'Video processing complete'
-            }
-            
         return result
         
     except Exception as e:
         logger.exception("Error during video processing")
-        if status_dict:
-            status_dict[video_id] = {
-                'status': 'error',
-                'message': str(e)
-            }
+        progress.error(str(e))
         raise
 
 def extract_audio(video_path: str, output_dir: Path) -> Path:
@@ -160,6 +133,9 @@ def extract_frames(video_path: str, json_path: str, output_dir: Path):
     logger.info(f"Extracting frames from: {video_path}")
     
     try:
+        # Create frames directory
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
         # Load transcription JSON
         with open(json_path, 'r') as f:
             data = json.load(f)
@@ -288,7 +264,7 @@ def cut_video_segments(video_path: str, snippets_data: Dict, output_dir: str = N
     # Save updated snippets
     snippets_json = os.path.join(output_dir, 'snippets', 'snippets.json')
     os.makedirs(os.path.dirname(snippets_json), exist_ok=True)
-    with open(snippets_json, 'w', encoding='utf-8') as f:
+    with open(snippets_json, 'w') as f:
         json.dump(snippets_data, f, indent=2, ensure_ascii=False)
     
     print(f"\nProcessing complete. Video segments saved to: {videos_dir}")
@@ -301,25 +277,33 @@ def cut_library_snippets(library_dir: str) -> None:
     """
     video_name = os.path.basename(library_dir)
     
-    # Try both .mp4 and .mov extensions
-    video_path = None
-    for ext in ['.mp4', '.MOV', '.mov']:
-        test_path = os.path.join('uploads', f"{video_name}{ext}")
-        if os.path.exists(test_path):
-            video_path = test_path
-            break
+    try:
+        # Load snippets data
+        snippets_path = os.path.join(library_dir, 'snippets', 'snippets.json')
+        with open(snippets_path, 'r', encoding='utf-8') as f:
+            snippets = json.load(f)
+            
+        # Try different video extensions
+        video_path = None
+        for ext in ['.mp4', '.MOV', '.mov']:
+            test_path = os.path.join('uploads', f"{video_name}{ext}")
+            if os.path.exists(test_path):
+                video_path = test_path
+                break
+                
+        if not video_path:
+            raise FileNotFoundError(f"Video file not found in uploads directory: {video_name}.*")
+            
+        # Create videos directory if it doesn't exist
+        videos_dir = os.path.join(library_dir, 'videos')
+        os.makedirs(videos_dir, exist_ok=True)
+            
+        # Cut video segments
+        cut_video_segments(video_path, {'snippets': snippets}, library_dir)
     
-    if not video_path:
-        raise FileNotFoundError(f"Video file not found in uploads directory: {video_name}.*")
-    
-    snippets_path = os.path.join(library_dir, 'snippets', 'snippets.json')
-    
-    # Load snippets
-    with open(snippets_path, 'r', encoding='utf-8') as f:
-        snippets = json.load(f)
-    
-    # Cut video
-    cut_video_segments(video_path, snippets, library_dir)
+    except Exception as e:
+        logger.exception("Error during video cutting")
+        raise
 
 if __name__ == '__main__':
     import argparse
@@ -343,7 +327,8 @@ if __name__ == '__main__':
     
     if args.command == 'process':
         output_dir = args.output_dir or os.path.dirname(args.video_path)
-        process_video(args.video_path, output_dir, skip_audio=args.skip_audio, skip_transcription=args.skip_transcription, skip_frames=args.skip_frames)
+        result = process_video(args.video_path, output_dir, skip_audio=args.skip_audio, skip_transcription=args.skip_transcription, skip_frames=args.skip_frames)
+        print(result)
     elif args.command == 'cut':
         cut_library_snippets(args.library_dir)
     else:

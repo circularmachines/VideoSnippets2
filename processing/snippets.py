@@ -161,6 +161,14 @@ def get_structured_output(text: str, language: str, segments_data: Dict, output_
         logging.info("Using existing analysis")
         return segments_data['analysis']
         
+    # Check if snippets already exist
+    snippets_dir = os.path.join(os.path.dirname(output_path), 'snippets')
+    snippets_json = os.path.join(snippets_dir, 'snippets.json')
+    if os.path.exists(snippets_json):
+        logging.info("Using existing snippets")
+        with open(snippets_json, 'r') as f:
+            return {'snippets': json.load(f)}
+        
     load_dotenv()
     
     # Define schema for video content analysis
@@ -283,6 +291,11 @@ def create_snippets(segments_data: Dict, snippets_dir: str, skip_existing: bool 
             json.dump(snippet, f, indent=2, ensure_ascii=False)
             
         snippets.append(snippet)
+        
+    # Save all snippets to snippets.json
+    snippets_json_path = os.path.join(snippets_dir, 'snippets.json')
+    with open(snippets_json_path, 'w', encoding='utf-8') as f:
+        json.dump(snippets, f, indent=2, ensure_ascii=False)
         
     return snippets
 

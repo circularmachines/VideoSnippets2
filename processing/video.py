@@ -11,7 +11,7 @@ import logging
 import cv2
 import json
 import subprocess
-from .transcribe import transcribe_audio
+from transcribe import transcribe_audio
 from typing import Dict
 
 logger = logging.getLogger(__name__)

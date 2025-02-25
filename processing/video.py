@@ -18,15 +18,18 @@ import config
 
 logger = logging.getLogger(__name__)
 
-def process_video(video_path: str, output_dir: str, status_dict=None, skip_frames=False) -> dict:
+def process_video(video_path: str, output_dir: str, status_dict=None, skip_audio=False, skip_transcription=False, skip_frames=False) -> dict:
     """
     Process a video file to extract audio and frames.
+    Steps will be skipped if output files already exist or if explicitly skipped.
     
     Args:
         video_path: Path to the video file
         output_dir: Directory to store processing outputs
         status_dict: Optional dictionary to update processing status
-        skip_frames: Optional flag to skip frame extraction
+        skip_audio: Skip audio extraction even if audio file doesn't exist
+        skip_transcription: Skip transcription even if transcription file doesn't exist
+        skip_frames: Skip frame extraction even if frames don't exist
         
     Returns:
         dict: Processing results including paths to extracted audio and frames
@@ -44,42 +47,66 @@ def process_video(video_path: str, output_dir: str, status_dict=None, skip_frame
     output_path.mkdir(parents=True, exist_ok=True)
     
     try:
-        # Extract audio
-        if status_dict:
-            status_dict[video_id] = {
-                'status': 'extracting',
-                'message': 'Extracting audio from video...'
-            }
-        audio_path = extract_audio(video_path, output_path)
+        # Check for existing audio
+        audio_path = output_path / "audio.mp3"
+        if not skip_audio:
+            if not audio_path.exists():
+                if status_dict:
+                    status_dict[video_id] = {
+                        'status': 'extracting',
+                        'message': 'Extracting audio from video...'
+                    }
+                audio_path = extract_audio(video_path, output_path)
+                logger.info(f"Extracted audio from video: {video_id}")
+            else:
+                logger.info(f"Using existing audio for video: {video_id}")
+        else:
+            logger.info(f"Skipping audio extraction for video: {video_id}")
+                
         result['audio_path'] = str(audio_path)
         
-        # Transcribe audio
-        if status_dict:
-            status_dict[video_id] = {
-                'status': 'transcribing',
-                'message': 'Transcribing audio...'
-            }
-        transcription_path = transcribe_audio(str(audio_path), str(output_path))
-        result['transcription_path'] = transcription_path
+        # Check for existing transcription
+        transcription_path = output_path / "transcription.json"
+        if not skip_transcription:
+            if not transcription_path.exists():
+                if status_dict:
+                    status_dict[video_id] = {
+                        'status': 'transcribing',
+                        'message': 'Transcribing audio...'
+                    }
+                transcription_path = transcribe_audio(str(audio_path), str(output_path))
+                logger.info(f"Created transcription for video: {video_id}")
+            else:
+                logger.info(f"Using existing transcription for video: {video_id}")
+        else:
+            logger.info(f"Skipping transcription for video: {video_id}")
+                
+        result['transcription_path'] = str(transcription_path)
         
-        # Extract frames
+        # Check for existing frames directory
+        frames_dir = output_path / "frames"
         if not skip_frames:
-            if status_dict:
-                status_dict[video_id] = {
-                    'status': 'extracting_frames',
-                    'message': 'Extracting frames from video...'
-                }
-            frames_dir = output_path / 'frames'
-            frames_dir.mkdir(exist_ok=True)
-            extract_frames(video_path, transcription_path, frames_dir)
-            result['frames_dir'] = str(frames_dir)
+            if not frames_dir.exists() or not any(frames_dir.iterdir()):
+                if status_dict:
+                    status_dict[video_id] = {
+                        'status': 'extracting_frames',
+                        'message': 'Extracting video frames...'
+                    }
+                frames_dir = extract_frames(video_path, transcription_path, frames_dir)
+                logger.info(f"Extracted frames for video: {video_id}")
+            else:
+                logger.info(f"Using existing frames for video: {video_id}")
+        else:
+            logger.info(f"Skipping frame extraction for video: {video_id}")
+                
+        result['frames_dir'] = str(frames_dir)
         
         if status_dict:
             status_dict[video_id] = {
-                'status': 'complete',
-                'message': 'Video processing complete!'
+                'status': 'done',
+                'message': 'Video processing complete'
             }
-        
+            
         return result
         
     except Exception as e:
@@ -87,9 +114,9 @@ def process_video(video_path: str, output_dir: str, status_dict=None, skip_frame
         if status_dict:
             status_dict[video_id] = {
                 'status': 'error',
-                'message': f'Processing failed: {str(e)}'
+                'message': str(e)
             }
-        raise RuntimeError(f"Failed to process video: {str(e)}")
+        raise
 
 def extract_audio(video_path: str, output_dir: Path) -> Path:
     """Extract audio from video file."""
@@ -304,6 +331,8 @@ if __name__ == '__main__':
     process_parser = subparsers.add_parser('process', help='Process a video file')
     process_parser.add_argument('video_path', help='Path to video file')
     process_parser.add_argument('--output-dir', help='Output directory (default: same as video)')
+    process_parser.add_argument('--skip-audio', action='store_true', help='Skip audio extraction')
+    process_parser.add_argument('--skip-transcription', action='store_true', help='Skip transcription')
     process_parser.add_argument('--skip-frames', action='store_true', help='Skip frame extraction')
     
     # Cut snippets command
@@ -314,7 +343,7 @@ if __name__ == '__main__':
     
     if args.command == 'process':
         output_dir = args.output_dir or os.path.dirname(args.video_path)
-        process_video(args.video_path, output_dir, skip_frames=args.skip_frames)
+        process_video(args.video_path, output_dir, skip_audio=args.skip_audio, skip_transcription=args.skip_transcription, skip_frames=args.skip_frames)
     elif args.command == 'cut':
         cut_library_snippets(args.library_dir)
     else:

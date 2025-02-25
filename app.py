@@ -5,17 +5,22 @@ Handles HTTP endpoints and request routing.
 from flask import Flask, jsonify, request, send_from_directory, send_file, make_response
 from flask_cors import CORS
 from pathlib import Path
-import logging
-import threading
+import os
 import json
-import re
+import logging
+from threading import Thread
+from werkzeug.utils import secure_filename
 from processing.video import process_video, cut_library_snippets
 from processing.snippets import load_and_simplify_segments, get_structured_output, create_snippets
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Disable debug logging for werkzeug
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
+# Create Flask app
 app = Flask(__name__, static_url_path='/static')
 CORS(app)
 
@@ -46,29 +51,35 @@ def process_video_async(video_path, video_name):
         output_dir = Path('library') / video_name
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Process video (audio, transcription, frames)
+        # Check if snippets already exist
+        snippets_dir = output_dir / 'snippets'
+        snippets_file = snippets_dir / 'snippets.json'
+        videos_dir = output_dir / 'videos'
+        
+        if snippets_file.exists() and videos_dir.exists() and any(videos_dir.iterdir()):
+            logger.info(f"Using existing snippets and videos for: {video_name}")
+            with open(snippets_file) as f:
+                snippets = json.load(f).get('snippets', [])
+            processing_status[video_name] = {
+                'status': 'complete',
+                'message': f'Using {len(snippets)} existing snippets'
+            }
+            return
+            
+        # Process video
+        logger.info(f'Processing video: {video_name}')
         result = process_video(str(video_path), str(output_dir), processing_status)
         
         # Create snippets
-        processing_status[video_name] = {
-            'status': 'creating_snippets',
-            'message': 'Analyzing content and creating snippets...'
-        }
-        
-        # Load and analyze segments
-        transcription_path = result['transcription_path']
-        simplified_text, language, segments_data = load_and_simplify_segments(transcription_path)
-        analysis = get_structured_output(simplified_text, language, segments_data, transcription_path)
-        
-        # Create snippets directory and snippets
-        snippets_dir = output_dir / 'snippets'
-        snippets = create_snippets(segments_data, str(snippets_dir))
+        logger.info('Creating snippets')
+        snippets = create_snippets(
+            result['transcription_path'],
+            skip_analysis='analysis' in result,
+            skip_existing=True
+        )
         
         # Cut video into segments
-        processing_status[video_name] = {
-            'status': 'cutting_video',
-            'message': 'Creating video segments...'
-        }
+        logger.info('Cutting video segments')
         cut_library_snippets(str(output_dir))
         
         # Update status
@@ -120,7 +131,7 @@ def upload_video():
         }
         
         # Start processing in a separate thread
-        thread = threading.Thread(
+        thread = Thread(
             target=process_video_async,
             args=(video_path, video_name)
         )
@@ -385,6 +396,68 @@ def serve_frame(frame_path):
         
     except Exception as e:
         logger.exception('Error serving frame')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/snippets', methods=['POST'])
+def create_video_snippets():
+    """Create snippets from video segments."""
+    if 'transcription_path' not in request.json:
+        return jsonify({'error': 'No transcription path provided'}), 400
+        
+    transcription_path = request.json['transcription_path']
+    if not Path(transcription_path).exists():
+        return jsonify({'error': 'Transcription file not found'}), 404
+        
+    # Get skip options from request
+    skip_analysis = request.json.get('skip_analysis', False)
+    skip_existing = request.json.get('skip_existing', False)
+    
+    try:
+        snippets = create_snippets(
+            transcription_path,
+            skip_analysis=skip_analysis,
+            skip_existing=skip_existing
+        )
+        return jsonify({'snippets': snippets})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/process', methods=['POST'])
+def process():
+    """Process a video file."""
+    if 'video' not in request.files:
+        return jsonify({'error': 'No video file provided'}), 400
+    
+    video_file = request.files['video']
+    if video_file.filename == '':
+        return jsonify({'error': 'No video file selected'}), 400
+        
+    # Get skip options from request
+    skip_audio = request.form.get('skip_audio', '').lower() == 'true'
+    skip_transcription = request.form.get('skip_transcription', '').lower() == 'true'
+    skip_frames = request.form.get('skip_frames', '').lower() == 'true'
+    
+    # Save the uploaded file
+    video_path = Path('uploads') / video_file.filename
+    video_path.parent.mkdir(exist_ok=True)
+    video_file.save(str(video_path))
+    
+    # Create a unique output directory for this video
+    video_id = video_path.stem
+    output_dir = Path('library') / video_id
+    
+    try:
+        # Process the video with skip options
+        result = process_video(
+            str(video_path), 
+            str(output_dir),
+            status_dict=processing_status,
+            skip_audio=skip_audio,
+            skip_transcription=skip_transcription,
+            skip_frames=skip_frames
+        )
+        return jsonify(result)
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

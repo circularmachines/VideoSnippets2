@@ -137,7 +137,7 @@ def load_and_simplify_segments(transcription_path: str) -> tuple[str, str, Dict]
     
     return simplified_text, data.get('metadata', {}).get('language', 'en'), data
 
-def get_structured_output(text: str, language: str, segments_data: Dict, output_path: str) -> Dict:
+def get_structured_output(text: str, language: str, segments_data: Dict, output_path: str, skip_analysis: bool = False) -> Dict:
     """Send text and frames to OpenAI and get structured response.
     
     This function:
@@ -151,10 +151,16 @@ def get_structured_output(text: str, language: str, segments_data: Dict, output_
         language: Language of the content
         segments_data: Complete transcription data with frame paths
         output_path: Path to save the updated JSON with analysis
+        skip_analysis: Skip LLM analysis if True and use existing analysis from segments_data
         
     Returns:
         Dict containing structured analysis results
     """
+    # Check if we should skip analysis
+    if skip_analysis and 'analysis' in segments_data:
+        logging.info("Using existing analysis")
+        return segments_data['analysis']
+        
     load_dotenv()
     
     # Define schema for video content analysis
@@ -199,35 +205,86 @@ Output a JSON object following this schema:
 For each segment that has frames, I'll show you the frames.
 Create snippets that group related segments together."""
 
-    llm = LLMProcessor(model="gpt-4o")
+    # Initialize LLM processor
+    llm = LLMProcessor()
     
-    # Prepare content list with both text and images
-    video_dir = os.path.dirname(output_path)
-    content = llm.prepare_content(user_prompt, segments_data, video_dir)
+    # Prepare content with text and frames
+    content = llm.prepare_content(user_prompt, segments_data, os.path.dirname(output_path))
     
-    # Use multimodal processing if we have frames, otherwise use text-only
-    if len(content) > 1:
-        result = llm.process_multimodal(
-            content_list=content,
-            system_message=system_message,
-            schema=schema
-        )
+    # Get analysis from LLM
+    result = llm.process_multimodal(content, system_message, schema)
+    
+    if result:
+        # Save the analysis in the segments data
+        segments_data['analysis'] = result
+        
+        # Save updated segments data
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(segments_data, f, indent=2, ensure_ascii=False)
+            
+        # Save LLM call details
+        output_dir = os.path.dirname(output_path)
+        save_llm_call(output_dir, system_message, user_prompt, schema, result)
+        
+        return result
     else:
-        result = llm.process_string(
-            content=user_prompt,
-            system_message=system_message,
-            schema=schema
-        )
+        raise RuntimeError("Failed to get analysis from LLM")
+
+def create_snippets(segments_data: Dict, snippets_dir: str, skip_existing: bool = False) -> List[Dict]:
+    """Create video snippets based on analysis.
     
-    # Update the original JSON with the analysis
-    segments_data['snippets'] = result.get('snippets', [])
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(segments_data, f, indent=2, ensure_ascii=False)
+    Args:
+        segments_data: Complete transcription data with analysis
+        snippets_dir: Directory to save snippet files
+        skip_existing: Skip creating snippets that already exist
+        
+    Returns:
+        List of snippet metadata
+    """
+    # Create snippets directory
+    os.makedirs(snippets_dir, exist_ok=True)
     
-    # Save LLM call details
-    save_llm_call(os.path.dirname(output_path), system_message, user_prompt, schema, result)
+    snippets = []
+    analysis = segments_data.get('analysis', {})
     
-    return result
+    for i, snippet_data in enumerate(analysis.get('snippets', [])):
+        snippet_id = f"snippet_{i+1}"
+        
+        # Check if snippet already exists
+        snippet_path = os.path.join(snippets_dir, f"{snippet_id}.json")
+        if skip_existing and os.path.exists(snippet_path):
+            logging.info(f"Snippet {snippet_id} already exists, skipping")
+            with open(snippet_path, 'r') as f:
+                snippet = json.load(f)
+            snippets.append(snippet)
+            continue
+            
+        # Create snippet
+        snippet = {
+            'id': snippet_id,
+            'title': snippet_data['title'],
+            'description': snippet_data['description'],
+            'segments': []
+        }
+        
+        # Add segments
+        for segment_idx in snippet_data['segments']:
+            if 0 <= segment_idx < len(segments_data['segments']):
+                segment = segments_data['segments'][segment_idx]
+                snippet['segments'].append({
+                    'start': segment['start'],
+                    'end': segment['end'],
+                    'text': segment['text'],
+                    'frame_path': segment.get('frame_path')
+                })
+        
+        # Save snippet
+        with open(snippet_path, 'w', encoding='utf-8') as f:
+            json.dump(snippet, f, indent=2, ensure_ascii=False)
+            
+        snippets.append(snippet)
+        
+    return snippets
 
 def save_llm_call(output_dir: str, system_prompt: str, user_prompt: str, schema: Dict, response: Dict) -> None:
     """Save LLM call details to markdown file.
@@ -267,95 +324,35 @@ def save_llm_call(output_dir: str, system_prompt: str, user_prompt: str, schema:
     with open(md_path, 'w', encoding='utf-8') as f:
         f.write(markdown)
 
-def create_snippets(segments_data: Dict, snippets_dir: str) -> List[Dict]:
-    """Create video snippets based on analysis.
+def process_snippets(transcription_path: str, skip_analysis: bool = False, skip_existing: bool = False) -> List[Dict]:
+    """Process video segments into snippets.
     
     Args:
-        segments_data: Complete transcription data with analysis
-        snippets_dir: Directory to save snippet files
+        transcription_path: Path to transcription JSON file
+        skip_analysis: Skip LLM analysis if True and use existing analysis
+        skip_existing: Skip creating snippets that already exist
         
     Returns:
         List of snippet metadata
     """
-    # Create snippets directory
-    os.makedirs(snippets_dir, exist_ok=True)
-    
-    # Get video name from path
-    video_name = os.path.basename(os.path.dirname(snippets_dir))
-    
-    # Get max segment index
-    max_index = len(segments_data.get('segments', [])) - 1
-    
-    snippets = []
-    for snippet in segments_data.get('snippets', []):
-        # Get all segments for this snippet
-        segment_data = []
-        valid_segments = [idx for idx in snippet['segments'] if 0 <= idx <= max_index]
-        
-        if len(valid_segments) == 0:
-            logging.warning(f"Skipping snippet '{snippet['title']}' - no valid segments")
-            continue
-            
-        if len(valid_segments) < len(snippet['segments']):
-            invalid = set(snippet['segments']) - set(valid_segments)
-            logging.warning(f"Snippet '{snippet['title']}' had invalid segments: {invalid}")
-        
-        for idx in valid_segments:
-            try:
-                segment = segments_data['segments'][idx]
-                # Fix frame path if needed
-                frame_path = segment.get('frame_path', '')
-                if frame_path and 'library/frames' in frame_path:
-                    frame_path = frame_path.replace('library/frames', f'library/{video_name}/frames')
-                
-                segment_data.append({
-                    'text': segment['text'],
-                    'start': segment['start'],
-                    'end': segment['end'],
-                    'frame_path': frame_path
-                })
-            except (IndexError, KeyError) as e:
-                logging.error(f"Error processing segment {idx}: {e}")
-                continue
-        
-        # Only add snippet if it has valid segments
-        if segment_data:
-            snippets.append({
-                'title': snippet['title'],
-                'description': snippet['description'],
-                'segments': segment_data
-            })
-    
-    # Save snippets metadata
-    snippets_path = os.path.join(snippets_dir, 'snippets.json')
-    with open(snippets_path, 'w', encoding='utf-8') as f:
-        json.dump({'snippets': snippets}, f, indent=2, ensure_ascii=False)
-    
-    return snippets
-
-def main():
-    """Command-line interface for processing video segments."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Process video segments')
-    parser.add_argument('json_path', help='Path to transcription JSON file')
-    args = parser.parse_args()
-    
     # Load and simplify segments
-    simplified_text, language, segments_data = load_and_simplify_segments(args.json_path)
+    text, language, segments_data = load_and_simplify_segments(transcription_path)
     
-    # Get structured output and save back to JSON
-    analysis = get_structured_output(simplified_text, language, segments_data, args.json_path)
+    # Get structured output
+    analysis = get_structured_output(text, language, segments_data, transcription_path, skip_analysis)
     
-    # Create snippets directory under video directory
-    video_dir = os.path.dirname(args.json_path)
-    snippets_dir = os.path.join(video_dir, 'snippets')
+    # Create snippets directory
+    snippets_dir = os.path.join(os.path.dirname(transcription_path), 'snippets')
     
     # Create snippets
-    snippets = create_snippets(segments_data, snippets_dir)
-    print("\nAnalysis completed and saved to JSON file")
-    print(json.dumps(analysis, indent=2))
-    print(f"\nCreated {len(snippets)} snippets in {snippets_dir}")
+    return create_snippets(segments_data, snippets_dir, skip_existing)
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description='Process video segments into snippets')
+    parser.add_argument('transcription_path', help='Path to transcription JSON file')
+    parser.add_argument('--skip-analysis', action='store_true', help='Skip LLM analysis if analysis exists')
+    parser.add_argument('--skip-existing', action='store_true', help='Skip creating snippets that already exist')
+    args = parser.parse_args()
+    
+    process_snippets(args.transcription_path, args.skip_analysis, args.skip_existing)

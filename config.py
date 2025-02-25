@@ -9,11 +9,24 @@ DEV_MODE = True
 
 # Base paths
 BASE_DIR = Path(__file__).parent
-OLD_REPO_DIR = BASE_DIR.parent / 'VideoSnippets' if DEV_MODE else None
+OLD_REPO_DIR = BASE_DIR.parent / 'snuttification' if DEV_MODE else None
 
 # Storage paths
 UPLOAD_DIR = BASE_DIR / 'uploads'
 LIBRARY_DIR = BASE_DIR / 'library'
+
+# Video processing settings
+VIDEO_SETTINGS = {
+    'width': 720,
+    'height': 1280,
+    'codec': 'libx264',
+    'preset': 'fast',
+    'crf': 23,
+    'audio_codec': 'aac',
+    'audio_bitrate': '128k',
+    'force_aspect_ratio': True,  # Force 9:16 aspect ratio
+    'aspect_ratio': '9:16',  # Target aspect ratio
+}
 
 # Import paths for development
 if DEV_MODE and OLD_REPO_DIR:

@@ -24,17 +24,26 @@ async function loadLibrary() {
 
 // Display library items
 function displayLibrary(snippets) {
-    libraryGrid.innerHTML = snippets.map(snippet => `
-        <div class="library-item" onclick="showSnippet('${snippet.id}')">
-            <div class="item-info">
-                <h3>${snippet.title}</h3>
-                <p>${snippet.description || 'No description'}</p>
-                <div class="item-meta">
-                    <span>${snippet.segments.length} segments</span>
+    libraryGrid.innerHTML = snippets.map(snippet => {
+        // Get the first frame from the first segment as thumbnail
+        const firstSegment = snippet.segments[0];
+        const thumbnailPath = firstSegment ? `/api/frame/${snippet.video_name}/${firstSegment.frame_path}` : '';
+        
+        return `
+            <div class="library-item" onclick="showSnippet('${snippet.id}')">
+                <div class="thumbnail">
+                    <img src="${thumbnailPath}" alt="${snippet.title}" onerror="this.src='/static/img/placeholder.svg'">
+                </div>
+                <div class="item-info">
+                    <h3>${snippet.title}</h3>
+                    <p>${snippet.description || 'No description'}</p>
+                    <div class="item-meta">
+                        <span>${snippet.segments.length} segments</span>
+                    </div>
                 </div>
             </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Show snippet details
@@ -49,39 +58,52 @@ async function showSnippet(id) {
         snippetDescription.textContent = snippet.description || 'No description';
         
         if (snippet.video_name) {
-            // Convert title to filename format and make it match the actual files
-            const filename = snippet.title
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, '_')  // Replace any non-alphanumeric chars with underscore
-                .replace(/^_+|_+$/g, '')      // Remove leading/trailing underscores
-                + '.mp4';
-            const videoPath = `${snippet.video_name}/videos/${filename}`;
+            const videoPath = `/api/video/${snippet.video_name}/videos/${snippet.id.toLowerCase().replace(/\s+/g, '_')}.mp4`;
             console.log('Video path:', videoPath);
-            snippetVideo.src = `/api/video/${videoPath}`;
-            snippetVideo.parentElement.style.display = 'block';
-        } else {
-            console.log('No video_name in snippet data');
-            snippetVideo.parentElement.style.display = 'none';
+            
+            snippetVideo.src = videoPath;
+            snippetVideo.style.cursor = 'pointer';
+            
+            // Add click to play/pause
+            snippetVideo.onclick = function() {
+                if (snippetVideo.paused) {
+                    snippetVideo.play();
+                } else {
+                    snippetVideo.pause();
+                }
+            };
+            
+            // Show play icon on hover when paused
+            snippetVideo.onmouseover = function() {
+                if (snippetVideo.paused) {
+                    snippetVideo.style.opacity = '0.8';
+                }
+            };
+            
+            snippetVideo.onmouseout = function() {
+                snippetVideo.style.opacity = '1';
+            };
         }
         
         // Display segments
         segmentsList.innerHTML = snippet.segments.map(segment => `
             <div class="segment">
                 <p>${segment.text}</p>
-                <span class="timestamp">${formatTime(segment.start)} - ${formatTime(segment.end)}</span>
+                <span class="time">${formatTime(segment.start)} - ${formatTime(segment.end)}</span>
             </div>
         `).join('');
         
-        snippetModal.style.display = 'block';
+        snippetModal.classList.add('visible');
+        
     } catch (error) {
-        console.error('Error loading snippet:', error);
+        console.error('Error showing snippet:', error);
         showError('Failed to load snippet');
     }
 }
 
 // Close modal
 function closeModal() {
-    snippetModal.style.display = 'none';
+    snippetModal.classList.remove('visible');
     snippetVideo.pause();
     snippetVideo.src = '';
 }

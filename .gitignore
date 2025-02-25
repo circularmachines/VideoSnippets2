@@ -43,6 +43,7 @@ library/
 *.jpg
 *.jpeg
 *.png
+*.wav
 
 # Logs
 *.log

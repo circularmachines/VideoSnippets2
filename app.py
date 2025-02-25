@@ -1,5 +1,5 @@
 """
-VideoSnippets API Server
+Snuttification API Server
 Handles HTTP endpoints and request routing.
 """
 from flask import Flask, jsonify, request, send_from_directory, send_file, make_response
@@ -9,7 +9,7 @@ import logging
 import threading
 import json
 import re
-from processing.video import process_video
+from processing.video import process_video, cut_library_snippets
 from processing.snippets import load_and_simplify_segments, get_structured_output, create_snippets
 
 # Set up logging
@@ -60,9 +60,16 @@ def process_video_async(video_path, video_name):
         simplified_text, language, segments_data = load_and_simplify_segments(transcription_path)
         analysis = get_structured_output(simplified_text, language, segments_data, transcription_path)
         
-        # Create snippets directory
+        # Create snippets directory and snippets
         snippets_dir = output_dir / 'snippets'
         snippets = create_snippets(segments_data, str(snippets_dir))
+        
+        # Cut video into segments
+        processing_status[video_name] = {
+            'status': 'cutting_video',
+            'message': 'Creating video segments...'
+        }
+        cut_library_snippets(str(output_dir))
         
         # Update status
         processing_status[video_name] = {
@@ -323,7 +330,7 @@ def serve_video(video_path):
             logger.info(f'Range request: {range_header}')
             # Parse range header
             byte1, byte2 = 0, None
-            match = re.search('(\d+)-(\d*)', range_header)
+            match = re.search(r'(\d+)-(\d*)', range_header)
             groups = match.groups()
             
             if groups[0]: byte1 = int(groups[0])
@@ -360,6 +367,24 @@ def serve_video(video_path):
         
     except Exception as e:
         logger.exception('Error serving video')
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/frame/<path:frame_path>')
+def serve_frame(frame_path):
+    """Serve a frame image."""
+    try:
+        # Ensure the frame path is within the library directory
+        full_path = Path('library') / frame_path
+        logger.debug(f'Serving frame: {full_path}')
+        
+        if not full_path.exists():
+            logger.error(f'Frame not found: {full_path}')
+            return jsonify({'error': 'Frame not found'}), 404
+            
+        return send_file(str(full_path))
+        
+    except Exception as e:
+        logger.exception('Error serving frame')
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

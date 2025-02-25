@@ -13,6 +13,8 @@ import json
 import subprocess
 from .transcribe import transcribe_audio
 from typing import Dict
+import sys
+import config
 
 logger = logging.getLogger(__name__)
 
@@ -222,17 +224,27 @@ def cut_video_segments(video_path: str, snippets_data: Dict, output_dir: str = N
         safe_name = "".join(c if c.isalnum() else "_" for c in snippet['title'].lower())
         output_file = os.path.join(videos_dir, f"{safe_name}.mp4")
         
-        # Cut the video segment
+        # Get video settings from config
+        vs = config.VIDEO_SETTINGS
+        
+        # Build FFmpeg filter for aspect ratio handling
+        if vs['force_aspect_ratio']:
+            vf = f'scale={vs["width"]}:{vs["height"]}:force_original_aspect_ratio=decrease,pad={vs["width"]}:{vs["height"]}:(ow-iw)/2:(oh-ih)/2'
+        else:
+            vf = f'scale={vs["width"]}:{vs["height"]}'
+        
+        # Cut the video segment with configured settings
         cmd = [
             'ffmpeg', '-y',  # Overwrite output files
             '-i', video_path,
             '-ss', str(start_time),
             '-to', str(end_time),
-            '-c:v', 'libx264',  # Use H.264 codec
-            '-preset', 'fast',  # Fast encoding
-            '-crf', '23',      # Good quality
-            '-c:a', 'aac',     # AAC audio codec
-            '-b:a', '128k',    # Audio bitrate
+            '-vf', vf,
+            '-c:v', vs['codec'],
+            '-preset', vs['preset'],
+            '-crf', str(vs['crf']),
+            '-c:a', vs['audio_codec'],
+            '-b:a', vs['audio_bitrate'],
             '-movflags', '+faststart',  # Enable fast start for web playback
             output_file
         ]

@@ -1,4 +1,4 @@
-# VideoSnippets2
+# Snuttification
 
 A web application for processing videos with automatic transcription, frame extraction, and smart snippet generation.
 
@@ -16,7 +16,7 @@ A web application for processing videos with automatic transcription, frame extr
 ## Project Structure
 
 ```
-VideoSnippets2/
+Snuttification/
 ├── processing/           # Processing modules
 │   ├── video.py         # Video processing (audio, frames)
 │   ├── transcribe.py    # Audio transcription with Whisper

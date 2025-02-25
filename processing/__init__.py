@@ -1,5 +1,5 @@
 """
-VideoSnippets processing module.
+Snuttification processing module.
 Handles video processing, analysis, and library management.
 """
 

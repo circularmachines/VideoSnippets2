@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Snuttification - Library</title>
+    <title>snuttification</title>
     <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Snuttification</h1>
+            <h1>snuttification</h1>
             <nav>
                 <a href="/">Upload</a>
                 <a href="/verify">Verify</a>
@@ -18,15 +18,13 @@
         </header>
 
         <main>
-            <section class="library-section">
-                <h2>Video Library</h2>
-                <div class="search-container">
-                    <input type="text" id="searchInput" placeholder="Search snippets...">
-                </div>
-                <div class="library-grid" id="libraryGrid">
-                    <!-- Snippets will be loaded here -->
-                </div>
-            </section>
+            <div class="search-container">
+                <input type="text" id="searchInput" placeholder="Search snippets..." oninput="filterSnippets()">
+            </div>
+
+            <div id="libraryContent" class="library-content">
+                <!-- Snippets will be loaded here -->
+            </div>
         </main>
 
         <!-- Snippet Details Modal -->
@@ -38,10 +36,16 @@
                         <video id="snippetVideo"></video>
                     </div>
                     <div class="snippet-info">
-                        <h3 id="snippetTitle"></h3>
-                        <p id="snippetDescription"></p>
-                        <div class="segments-list" id="segmentsList">
-                            <!-- Segments will be listed here -->
+                        <h2 id="snippetTitle"></h2>
+                        <div class="metadata-section">
+                            <p><strong>Description:</strong> <span id="snippetDescription"></span></p>
+                            <p><strong>Product Type:</strong> <span id="productType"></span></p>
+                            <p><strong>Condition:</strong> <span id="condition"></span></p>
+                            <p><strong>Brand:</strong> <span id="brand"></span></p>
+                            <p><strong>Compatibility:</strong> <span id="compatibility"></span></p>
+                            <p><strong>Intended Use:</strong> <span id="intendedUse"></span></p>
+                            <p><strong>Modifications:</strong> <span id="modifications"></span></p>
+                            <p><strong>Missing Parts:</strong> <span id="missingParts"></span></p>
                         </div>
                     </div>
                 </div>

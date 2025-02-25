@@ -1,11 +1,10 @@
 // DOM Elements
 const searchInput = document.getElementById('searchInput');
-const libraryGrid = document.getElementById('libraryGrid');
+const libraryContent = document.getElementById('libraryContent');
 const snippetModal = document.getElementById('snippetModal');
 const snippetVideo = document.getElementById('snippetVideo');
 const snippetTitle = document.getElementById('snippetTitle');
 const snippetDescription = document.getElementById('snippetDescription');
-const segmentsList = document.getElementById('segmentsList');
 
 // Event Listeners
 searchInput.addEventListener('input', debounce(handleSearch, 300));
@@ -31,21 +30,21 @@ async function loadLibrary() {
 
 // Display library items
 function displayLibrary(snippets) {
-    libraryGrid.innerHTML = snippets.map(snippet => {
+    libraryContent.innerHTML = snippets.map(snippet => {
         // Get the first frame from the first segment as thumbnail
         const firstSegment = snippet.segments[0];
         const thumbnailPath = firstSegment ? `/api/frame/${snippet.video_name}/${firstSegment.frame_path}` : '';
         
         return `
-            <div class="library-item" onclick="showSnippet('${snippet.id}')">
+            <div class="library-item" onclick="showSnippet('${snippet.video_path}')">
                 <div class="thumbnail">
                     <img src="${thumbnailPath}" alt="${snippet.title}" onerror="this.src='/static/img/placeholder.svg'">
                 </div>
                 <div class="item-info">
                     <h3>${snippet.title}</h3>
                     <p>${snippet.description || 'No description'}</p>
-                    <div class="item-meta">
-                        <span>${snippet.segments.length} segments</span>
+                    <div class="segments-count">
+                        ${snippet.segments.length} segments
                     </div>
                 </div>
             </div>
@@ -54,92 +53,56 @@ function displayLibrary(snippets) {
 }
 
 // Show snippet details
-async function showSnippet(id) {
+async function showSnippet(snippetId) {
     try {
-        const response = await fetch(`/api/library/${id}`);
+        console.log('Opening snippet:', snippetId);
+        const response = await fetch(`/api/library/${encodeURIComponent(snippetId)}`);
         const snippet = await response.json();
         
         console.log('Snippet data:', snippet);
-        
-        // Clear previous metadata if it exists
-        const existingMetadata = document.querySelector('.metadata-section');
-        if (existingMetadata) {
-            existingMetadata.remove();
-        }
 
+        // Update modal content
         snippetTitle.textContent = snippet.title;
-        snippetDescription.textContent = snippet.description || 'No description';
+        snippetDescription.textContent = snippet.description || '';
         
-        // Create metadata HTML
-        const metadataHtml = `
-            <div class="metadata-section">
-                <div class="metadata-item">
-                    <strong>Product Type:</strong> ${snippet.product_type || 'Not specified'}
-                </div>
-                <div class="metadata-item">
-                    <strong>Condition:</strong> ${snippet.condition || 'Not specified'}
-                </div>
-                <div class="metadata-item">
-                    <strong>Brand:</strong> ${snippet.brand || 'Not specified'}
-                </div>
-                <div class="metadata-item">
-                    <strong>Compatibility:</strong> ${snippet.compatibility || 'Not specified'}
-                </div>
-                <div class="metadata-item">
-                    <strong>Intended Use:</strong> ${snippet.intended_use || 'Not specified'}
-                </div>
-                <div class="metadata-item">
-                    <strong>Modifications:</strong> ${snippet.modifications?.length ? snippet.modifications.join(', ') : 'None'}
-                </div>
-                <div class="metadata-item">
-                    <strong>Missing Parts:</strong> ${snippet.missing_parts?.length ? snippet.missing_parts.join(', ') : 'None'}
-                </div>
-            </div>
-        `;
+        // Update metadata fields
+        document.getElementById('productType').textContent = snippet.product_type || '';
+        document.getElementById('condition').textContent = snippet.condition || '';
+        document.getElementById('brand').textContent = snippet.brand || '';
+        document.getElementById('compatibility').textContent = snippet.compatibility || '';
+        document.getElementById('intendedUse').textContent = snippet.intended_use || '';
+        document.getElementById('modifications').textContent = (snippet.modifications || []).join(', ');
+        document.getElementById('missingParts').textContent = (snippet.missing_parts || []).join(', ');
         
-        // Insert metadata after description
-        snippetDescription.insertAdjacentHTML('afterend', metadataHtml);
+        // Update video source
+        snippetVideo.src = snippet.video_url;
+        snippetVideo.load();
+
+        // Debug: Log video dimensions when loaded
+        snippetVideo.onloadedmetadata = function() {
+            console.log('Video dimensions:', {
+                width: snippetVideo.videoWidth,
+                height: snippetVideo.videoHeight,
+                naturalWidth: snippetVideo.naturalWidth,
+                naturalHeight: snippetVideo.naturalHeight
+            });
+        };
+
+        // Add click to play/pause
+        const videoContainer = document.querySelector('.video-container');
+        videoContainer.onclick = function() {
+            if (snippetVideo.paused) {
+                snippetVideo.play();
+            } else {
+                snippetVideo.pause();
+            }
+        };
         
-        if (snippet.video_name) {
-            // Use the video_url provided by the API
-            console.log('Video URL:', snippet.video_url);
-            snippetVideo.src = snippet.video_url;
-            snippetVideo.style.cursor = 'pointer';
-            
-            // Add click to play/pause
-            snippetVideo.onclick = function() {
-                if (snippetVideo.paused) {
-                    snippetVideo.play();
-                } else {
-                    snippetVideo.pause();
-                }
-            };
-            
-            // Show play icon on hover when paused
-            snippetVideo.onmouseover = function() {
-                if (snippetVideo.paused) {
-                    snippetVideo.style.opacity = '0.8';
-                }
-            };
-            
-            snippetVideo.onmouseout = function() {
-                snippetVideo.style.opacity = '1';
-            };
-        }
-        
-        // Display segments
-        segmentsList.innerHTML = snippet.segments.map(segment => `
-            <div class="segment">
-                <p>${segment.text}</p>
-                <span class="time">${formatTime(segment.start)} - ${formatTime(segment.end)}</span>
-            </div>
-        `).join('');
-        
+        // Show modal
         snippetModal.classList.add('visible');
-        
     } catch (error) {
         console.error('Error showing snippet:', error);
-        showError('Failed to load snippet');
+        showError('Failed to load snippet details');
     }
 }
 
@@ -151,28 +114,32 @@ function closeModal() {
 }
 
 // Handle search
-async function handleSearch(event) {
-    const query = event.target.value.trim();
-    try {
-        const response = await fetch(`/api/library/search?q=${encodeURIComponent(query)}`);
-        const snippets = await response.json();
-        displayLibrary(snippets);
-    } catch (error) {
-        console.error('Error searching:', error);
-        showError('Search failed');
-    }
+function handleSearch(event) {
+    const searchTerm = event.target.value.toLowerCase();
+    const items = document.querySelectorAll('.library-item');
+    
+    items.forEach(item => {
+        const title = item.querySelector('h3').textContent.toLowerCase();
+        const description = item.querySelector('p').textContent.toLowerCase();
+        
+        if (title.includes(searchTerm) || description.includes(searchTerm)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
 }
 
 // Format time (seconds to MM:SS)
 function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 // Show error message
 function showError(message) {
-    // TODO: Implement error display
+    // You can implement this to show errors in a nice way
     console.error(message);
 }
 

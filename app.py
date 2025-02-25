@@ -249,6 +249,7 @@ def get_library():
             for snippet in snippets_list:
                 snippet_data = snippet.copy()
                 snippet_data['video_name'] = item_dir.name
+                # Use the complete video path from the snippet
                 video_url = f'/api/video/{item_dir.name}/{snippet["video_path"]}'
                 logger.info(f"Setting video URL to: {video_url}")
                 snippet_data['video_url'] = video_url
@@ -259,12 +260,12 @@ def get_library():
         logger.exception('Error getting library items')
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/library/<snippet_id>')
+@app.route('/api/library/<path:snippet_id>')
 def get_library_item(snippet_id):
     """Get details for a specific snippet."""
     try:
         library_dir = Path('library')
-        logger.info(f'Looking for snippet: {snippet_id}')
+        logger.info(f'Looking for snippet with video path: {snippet_id}')
         
         # Search for the snippet in all video directories
         for item_dir in library_dir.iterdir():
@@ -281,20 +282,21 @@ def get_library_item(snippet_id):
             # Get the list of snippets from the data
             snippets_list = data.get('snippets', [])
                 
-            # Find matching snippet
+            # Find matching snippet by video path
             for snippet in snippets_list:
-                if snippet['id'] == snippet_id:
+                if snippet['video_path'] == snippet_id:
                     logger.info(f'Found snippet in {item_dir.name}')
-                    logger.info(f'Snippet title: {snippet["title"]}')
+                    logger.info(f'Snippet data: {json.dumps(snippet, indent=2)}')
                     snippet_data = snippet.copy()
                     # Add video info
                     snippet_data['video_name'] = item_dir.name
+                    # Use the complete video path from the snippet
                     video_url = f'/api/video/{item_dir.name}/{snippet["video_path"]}'
                     logger.info(f"Setting video URL to: {video_url}")
                     snippet_data['video_url'] = video_url
                     return jsonify(snippet_data)
         
-        logger.error(f'Snippet not found: {snippet_id}')
+        logger.error(f'Snippet not found with video path: {snippet_id}')
         return jsonify({'error': 'Snippet not found'}), 404
         
     except Exception as e:
@@ -346,10 +348,13 @@ def serve_video(video_path):
     """Serve video file with range request support."""
     try:
         logger.info(f"Raw video path from URL: {video_path}")
+        # Split path into components for debugging
+        path_components = video_path.split('/')
+        logger.info(f"Path components: {path_components}")
+        
         # Ensure the video path is within the library directory
         full_path = Path('library') / video_path
-        logger.info(f'Requested video path: {video_path}')
-        logger.info(f'Full path: {full_path}')
+        logger.info(f'Full path being accessed: {full_path}')
         logger.info(f'File exists: {full_path.exists()}')
         
         if not full_path.exists():

@@ -10,8 +10,8 @@ from PIL import Image
 from dotenv import load_dotenv
 import logging
 from openai import OpenAI
+from .llm_config import Snippet, SnippetsResponse
 from . import llm_config
-from .schema import Snippet, SnippetsResponse
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -199,42 +199,45 @@ def create_snippets(segments_data: Dict, snippets_dir: str, skip_existing: bool 
     snippets = []
     analysis = segments_data.get('analysis', {})
     
-    for i, snippet_data in enumerate(analysis.get('snippets', [])):
-        snippet_id = f"snippet_{i+1}"
-        
-        # Check if snippet already exists
-        snippet_path = os.path.join(snippets_dir, f"{snippet_id}.json")
-        if skip_existing and os.path.exists(snippet_path):
-            logging.info(f"Snippet {snippet_id} already exists, skipping")
-            with open(snippet_path, 'r') as f:
-                snippet = json.load(f)
-            snippets.append(snippet)
-            continue
-            
-        # Create snippet with all fields from snippet_data
-        snippet = snippet_data.copy()
-        snippet['id'] = snippet_id
-        
-        # Reset segments list to be populated with full segment data
-        snippet['segments'] = []
+    # Create snippets from segments
+    snippets = []
+    current_snippet = None
+    
+    for segment in segments_data['segments']:
+        # Start a new snippet if needed
+        if current_snippet is None:
+            current_snippet = {
+                'title': '',  # Will be filled in by LLM
+                'description': '',  # Will be filled in by LLM
+                'segments': [segment],
+                'video_path': f'videos/{os.path.basename(segments_data["video_path"])}',
+                'id': f'videos/{os.path.basename(segments_data["video_path"])}',  # Use video path as ID
+                'product_type': None,
+                'condition': None,
+                'brand': None,
+                'compatibility': None,
+                'intended_use': None,
+                'modifications': [],
+                'missing_parts': []
+            }
         
         # Add segments
-        for segment_idx in snippet_data['segments']:
-            if 0 <= segment_idx < len(segments_data['segments']):
-                segment = segments_data['segments'][segment_idx]
-                snippet['segments'].append({
-                    'start': segment['start'],
-                    'end': segment['end'],
-                    'text': segment['text'],
-                    'frame_path': segment.get('frame_path')
-                })
-        
-        # Save snippet
+        current_snippet['segments'].append(segment)
+    
+    # Save snippet
+    snippet_id = current_snippet['id']
+    snippet_path = os.path.join(snippets_dir, f"{snippet_id}.json")
+    if skip_existing and os.path.exists(snippet_path):
+        logging.info(f"Snippet {snippet_id} already exists, skipping")
+        with open(snippet_path, 'r') as f:
+            snippet = json.load(f)
+    else:
         with open(snippet_path, 'w', encoding='utf-8') as f:
-            json.dump(snippet, f, indent=2, ensure_ascii=False)
-            
-        snippets.append(snippet)
-        
+            json.dump(current_snippet, f, indent=2, ensure_ascii=False)
+        snippet = current_snippet
+    
+    snippets.append(snippet)
+    
     # Save all snippets to snippets.json
     snippets_json_path = os.path.join(snippets_dir, 'snippets.json')
     with open(snippets_json_path, 'w', encoding='utf-8') as f:

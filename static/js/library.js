@@ -10,6 +10,13 @@ const segmentsList = document.getElementById('segmentsList');
 // Event Listeners
 searchInput.addEventListener('input', debounce(handleSearch, 300));
 
+// Close modal when clicking outside content
+snippetModal.addEventListener('click', (e) => {
+    if (e.target === snippetModal) {
+        closeModal();
+    }
+});
+
 // Load library data
 async function loadLibrary() {
     try {

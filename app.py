@@ -79,11 +79,17 @@ def process_video_async(video_path: str, video_name: str):
             progress.using_existing('frames')
             
             with open(snippets_file) as f:
-                snippets = json.load(f).get('snippets', [])
+                data = json.load(f)
+            
+            logger.info(f"Loaded data from {snippets_file}: {data}")
+            
+            # Add each snippet with its video info
+            for snippet in data:
+                logger.info(f"Processing snippet: {snippet}")
             
             progress.using_existing('snippets')
             progress.using_existing('video segments')
-            progress.complete(len(snippets))
+            progress.complete(len(data))
             logger.info(f"Using existing snippets and videos for: {video_name}")
             return
             
@@ -233,16 +239,20 @@ def get_library():
             
             with open(snippets_file) as f:
                 data = json.load(f)
-                
+            
+            logger.info(f"Loaded data from {snippets_file}: {data}")
+            
+            # Get the list of snippets from the data
+            snippets_list = data.get('snippets', [])
+            
             # Add each snippet with its video info
-            for snippet in data['snippets']:
-                snippets.append({
-                    'id': snippet['title'],
-                    'title': snippet['title'],
-                    'description': snippet['description'] if 'description' in snippet else '',
-                    'video_name': item_dir.name,
-                    'segments': snippet['segments']
-                })
+            for snippet in snippets_list:
+                snippet_data = snippet.copy()
+                snippet_data['video_name'] = item_dir.name
+                video_url = f'/api/video/{item_dir.name}/{snippet["video_path"]}'
+                logger.info(f"Setting video URL to: {video_url}")
+                snippet_data['video_url'] = video_url
+                snippets.append(snippet_data)
         
         return jsonify(snippets)
     except Exception as e:
@@ -268,18 +278,21 @@ def get_library_item(snippet_id):
             with open(snippets_file) as f:
                 data = json.load(f)
                 
+            # Get the list of snippets from the data
+            snippets_list = data.get('snippets', [])
+                
             # Find matching snippet
-            for snippet in data['snippets']:
-                if snippet['title'] == snippet_id:
+            for snippet in snippets_list:
+                if snippet['id'] == snippet_id:
                     logger.info(f'Found snippet in {item_dir.name}')
                     logger.info(f'Snippet title: {snippet["title"]}')
-                    return jsonify({
-                        'id': snippet['title'],
-                        'title': snippet['title'],
-                        'description': snippet['description'] if 'description' in snippet else '',
-                        'video_name': item_dir.name,
-                        'segments': snippet['segments']
-                    })
+                    snippet_data = snippet.copy()
+                    # Add video info
+                    snippet_data['video_name'] = item_dir.name
+                    video_url = f'/api/video/{item_dir.name}/{snippet["video_path"]}'
+                    logger.info(f"Setting video URL to: {video_url}")
+                    snippet_data['video_url'] = video_url
+                    return jsonify(snippet_data)
         
         logger.error(f'Snippet not found: {snippet_id}')
         return jsonify({'error': 'Snippet not found'}), 404
@@ -294,7 +307,7 @@ def search_library():
     query = request.args.get('q', '').lower()
     try:
         library_dir = Path('library')
-        snippets = []
+        matches = []
         
         for item_dir in library_dir.iterdir():
             if not item_dir.is_dir():
@@ -307,19 +320,23 @@ def search_library():
             with open(snippets_file) as f:
                 data = json.load(f)
             
-            # Search in snippet titles and text
-            for snippet in data['snippets']:
+            # Get the list of snippets from the data
+            snippets_list = data.get('snippets', [])
+            
+            # Add matching snippets
+            for snippet in snippets_list:
                 if (query in snippet['title'].lower() or 
                     any(query in segment['text'].lower() for segment in snippet['segments'])):
-                    snippets.append({
-                        'id': f"{item_dir.name}/{snippet['title']}",
-                        'title': snippet['title'],
-                        'description': snippet.get('description', ''),
-                        'video_path': snippet.get('video_path', ''),
-                        'segments': snippet['segments']
-                    })
+                    snippet_data = snippet.copy()
+                    # Add video info
+                    snippet_data['video_name'] = item_dir.name
+                    snippet_data['id'] = f"{item_dir.name}/{snippet_data['id']}"
+                    video_url = f'/api/video/{item_dir.name}/{snippet["video_path"]}'
+                    logger.info(f"Setting video URL to: {video_url}")
+                    snippet_data['video_url'] = video_url
+                    matches.append(snippet_data)
         
-        return jsonify(snippets)
+        return jsonify(matches)
     except Exception as e:
         logger.exception('Error searching snippets')
         return jsonify({'error': str(e)}), 500
@@ -328,6 +345,7 @@ def search_library():
 def serve_video(video_path):
     """Serve video file with range request support."""
     try:
+        logger.info(f"Raw video path from URL: {video_path}")
         # Ensure the video path is within the library directory
         full_path = Path('library') / video_path
         logger.info(f'Requested video path: {video_path}')

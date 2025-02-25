@@ -61,14 +61,49 @@ async function showSnippet(id) {
         
         console.log('Snippet data:', snippet);
         
+        // Clear previous metadata if it exists
+        const existingMetadata = document.querySelector('.metadata-section');
+        if (existingMetadata) {
+            existingMetadata.remove();
+        }
+
         snippetTitle.textContent = snippet.title;
         snippetDescription.textContent = snippet.description || 'No description';
         
+        // Create metadata HTML
+        const metadataHtml = `
+            <div class="metadata-section">
+                <div class="metadata-item">
+                    <strong>Product Type:</strong> ${snippet.product_type || 'Not specified'}
+                </div>
+                <div class="metadata-item">
+                    <strong>Condition:</strong> ${snippet.condition || 'Not specified'}
+                </div>
+                <div class="metadata-item">
+                    <strong>Brand:</strong> ${snippet.brand || 'Not specified'}
+                </div>
+                <div class="metadata-item">
+                    <strong>Compatibility:</strong> ${snippet.compatibility || 'Not specified'}
+                </div>
+                <div class="metadata-item">
+                    <strong>Intended Use:</strong> ${snippet.intended_use || 'Not specified'}
+                </div>
+                <div class="metadata-item">
+                    <strong>Modifications:</strong> ${snippet.modifications?.length ? snippet.modifications.join(', ') : 'None'}
+                </div>
+                <div class="metadata-item">
+                    <strong>Missing Parts:</strong> ${snippet.missing_parts?.length ? snippet.missing_parts.join(', ') : 'None'}
+                </div>
+            </div>
+        `;
+        
+        // Insert metadata after description
+        snippetDescription.insertAdjacentHTML('afterend', metadataHtml);
+        
         if (snippet.video_name) {
-            const videoPath = `/api/video/${snippet.video_name}/videos/${snippet.id.toLowerCase().replace(/\s+/g, '_')}.mp4`;
-            console.log('Video path:', videoPath);
-            
-            snippetVideo.src = videoPath;
+            // Use the video_url provided by the API
+            console.log('Video URL:', snippet.video_url);
+            snippetVideo.src = snippet.video_url;
             snippetVideo.style.cursor = 'pointer';
             
             // Add click to play/pause

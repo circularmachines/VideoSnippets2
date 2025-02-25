@@ -335,6 +335,23 @@ button:hover {
     margin-right: 80%;
 }
 
+.metadata-section {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.metadata-item {
+    margin: 10px 0;
+    line-height: 1.4;
+}
+
+.metadata-item strong {
+    color: #495057;
+    margin-right: 8px;
+}
+
 @media (max-width: 992px) {
     .video-details {
         width: 100%;
